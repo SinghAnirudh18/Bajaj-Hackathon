@@ -26,7 +26,6 @@
             overflow: hidden;
         }
         
-        /* Animated background elements */
         .bg-decoration {
             position: fixed;
             top: 0;
@@ -112,6 +111,7 @@
             backdrop-filter: blur(15px);
             box-sizing: border-box;
             transition: all 0.5s ease;
+            bottom: 180px;
         }
         
         .left-section.hidden {
@@ -230,7 +230,7 @@
             transform: translateY(100%);
         }
         
-        .heading{
+        .heading {
             font-size: 22px;
             font-weight: 600;
             color: white;
@@ -274,7 +274,6 @@
                 rgba(112, 5, 64, 0.9) 50%, 
                 rgba(0, 0, 0, 1) 100%
             );
-
         }
         
         .chat-header {
@@ -346,7 +345,8 @@
             background: linear-gradient(135deg, 
                 rgba(0, 0, 0, 1) 0%, 
                 rgba(112, 5, 64, 0.9) 50%, 
-                rgba(0, 0, 0, 1) 100%);
+                rgba(0, 0, 0, 1) 100%
+            );
             border: none;
             border-radius: 40px;
             padding: 10px 15px;
@@ -523,6 +523,7 @@
                 padding: 20px;
             }
         }
+        
         .history-button {
             background-color: #000;     
             color: #fff;                
@@ -551,7 +552,7 @@
             background-color: #ffffff;     
             color: #000000;                
             padding: 8px 16px;
-            border:2px solid #000;
+            border: 2px solid #000;
             border-radius: 25px;
             font-size: 14px;
             cursor: pointer;
@@ -622,7 +623,7 @@
             top: 20px;
             right: 20px;
             background: linear-gradient(135deg, #faf9f8, #faf8f8);
-            color: white;
+            color: black;
             border: none;
             border-radius: 25px;
             padding: 8px 16px;
@@ -650,13 +651,13 @@
                         Leverage the power of Retrieval-Augmented Generation to extract insights from<br> your documents with unmatched speed and precision.
                     </p>
                     <p class="rag-description">
-                        Our system combines deep learning with real-time document search to bring you accurate,<br> context-aware answers instantly. Whether it's PDFs, research papers, or scanned documents<br> — we transform your data into knowledge.
+                        Our system combines deep learning with real-time document search to bring you accurate,<br> context-aware answers instantly. Supports PDFs, TXT, DOCX, DOC, and MD files.
                     </p>
                 </div>
             </div>
             <div class="left-section">
                 <h2 class="upload-title">Upload Document</h2>
-                <p class="upload-subtitle">Support for PDF, TXT, DOCX, and more</p>
+                <p class="upload-subtitle">Support for PDF, TXT, DOCX, DOC, and MD</p>
                 <div class="file-input-wrapper">
                     <input type="file" id="documentInput" class="file-input" accept=".pdf,.txt,.docx,.doc,.md">
                     <div class="file-input-display" id="fileDisplay">
@@ -696,324 +697,274 @@
 
     <script>
         let uploadedDocument = null;
-let documentContent = null;
-let promptSent = false;
+        let promptSent = false;
 
-document.addEventListener('DOMContentLoaded', () => {
-    const fileInput = document.getElementById('documentInput');
-    const searchInput = document.getElementById('searchInput');
-    const sendButton = document.getElementById('sendButton');
-    const chatMessages = document.getElementById('chatMessages');
-    const uploadStatus = document.getElementById('uploadStatus');
-    const fileDisplay = document.getElementById('fileDisplay');
-    const rightSection = document.querySelector('.right-section');
-    const searchBar = document.querySelector('.search-bar');
-    const initialChatTitle = document.getElementById('initialChatTitle');
-    const chatArea = document.querySelector('.chat-area');
+        document.addEventListener('DOMContentLoaded', () => {
+            const fileInput = document.getElementById('documentInput');
+            const searchInput = document.getElementById('searchInput');
+            const sendButton = document.getElementById('sendButton');
+            const chatMessages = document.getElementById('chatMessages');
+            const uploadStatus = document.getElementById('uploadStatus');
+            const fileDisplay = document.getElementById('fileDisplay');
+            const rightSection = document.querySelector('.right-section');
+            const searchBar = document.querySelector('.search-bar');
+            const initialChatTitle = document.getElementById('initialChatTitle');
+            const chatArea = document.querySelector('.chat-area');
 
-    // Hide chat area and show initial title initially
-    chatArea.style.display = 'none';
-    initialChatTitle.style.display = 'block';
+            // Hide chat area and show initial title initially
+            chatArea.style.display = 'none';
+            initialChatTitle.style.display = 'block';
 
-    fileInput.addEventListener('change', handleFileUpload);
-    sendButton.addEventListener('click', sendMessage);
-    
-    fileDisplay.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        fileDisplay.style.borderColor = '#4ecdc4';
-        fileDisplay.style.background = 'rgba(78, 205, 196, 0.2)';
-    });
-    
-    fileDisplay.addEventListener('dragleave', (e) => {
-        e.preventDefault();
-        fileDisplay.style.borderColor = 'rgba(255, 255, 255, 0.4)';
-        fileDisplay.style.background = 'rgba(255, 255, 255, 0.1)';
-    });
-    
-    fileDisplay.addEventListener('drop', (e) => {
-        e.preventDefault();
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            fileInput.files = files;
-            handleFileUpload({ target: { files: files } });
-        }
-        fileDisplay.style.borderColor = 'rgba(255, 255, 255, 0.4)';
-        fileDisplay.style.background = 'rgba(255, 255, 255, 0.1)';
-    });
+            fileInput.addEventListener('change', handleFileUpload);
+            sendButton.addEventListener('click', sendMessage);
 
-    searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
+            fileDisplay.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                fileDisplay.style.borderColor = '#4ecdc4';
+                fileDisplay.style.background = 'rgba(78, 205, 196, 0.2)';
+            });
 
-    window.addEventListener('resize', adjustLayout);
-    // Initial layout adjustment
-    adjustLayout();
-});
+            fileDisplay.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                fileDisplay.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+                fileDisplay.style.background = 'rgba(255, 255, 255, 0.1)';
+            });
 
-function handleFileUpload(e) {
-    const file = e.target.files[0];
-    const uploadStatus = document.getElementById('uploadStatus');
-    const fileDisplay = document.getElementById('fileDisplay');
-    
-    if (!file) {
-        showUploadStatus('No file selected.', 'error');
-        return;
-    }
-    
-    if (file.size > 10 * 1024 * 1024) {
-        showUploadStatus('File too large. Max 10MB.', 'error');
-        fileDisplay.innerHTML = `
-            <div class="file-icon">📄</div>
-            <div>Click to upload or drag and drop</div>
-            <div style="font-size: 12px; opacity: 0.8;">Max 10MB</div>
-        `;
-        return;
-    }
-    
-    fileDisplay.innerHTML = `
-        <div class="file-icon">📄</div>
-        <div>Uploading: ${file.name}</div>
-        <div class="loading"></div>
-    `;
-    
-    const formData = new FormData();
-    formData.append('document', file);
+            fileDisplay.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    fileInput.files = files;
+                    handleFileUpload({ target: { files } });
+                }
+                fileDisplay.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+                fileDisplay.style.background = 'rgba(255, 255, 255, 0.1)';
+            });
 
-    fetch('http://localhost:3000/upload', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`Upload failed! Status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.message && data.message.includes('successfully')) {
-            uploadedDocument = data.filename;
-            promptSent = false; // Reset promptSent for new document
-            setTimeout(() => {
+            searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            window.addEventListener('resize', adjustLayout);
+            adjustLayout();
+        });
+
+        async function handleFileUpload(e) {
+            const file = e.target.files[0];
+            const uploadStatus = document.getElementById('uploadStatus');
+            const fileDisplay = document.getElementById('fileDisplay');
+
+            if (!file) {
+                showUploadStatus('No file selected.', 'error');
+                return;
+            }
+
+            const allowedTypes = ['.pdf', '.txt', '.docx', '.doc', '.md'];
+            const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+            if (!allowedTypes.includes(fileExtension)) {
+                showUploadStatus('Unsupported file type. Use PDF, TXT, DOCX, DOC, or MD.', 'error');
                 fileDisplay.innerHTML = `
-                    <div class="file-icon">✅</div>
-                    <div>Uploaded: ${file.name}</div>
-                    <div style="font-size: 12px; opacity: 0.8;">Ready!</div>
+                    <div class="file-icon">📄</div>
+                    <div>Click to upload or drag and drop</div>
+                    <div style="font-size: 12px; opacity: 0.8;">Max 10MB</div>
                 `;
-                fileDisplay.style.background = 'rgba(76, 175, 80, 0.2)';
-                fileDisplay.style.borderColor = '#4caf50';
-                showUploadStatus('File uploaded successfully!', 'success');
-            }, 2000);
-        } else {
-            uploadedDocument = null;
-            showUploadStatus(data.message || 'Upload failed.', 'error');
+                return;
+            }
+
+            if (file.size > 10 * 1024 * 1024) {
+                showUploadStatus('File too large. Max 10MB.', 'error');
+                fileDisplay.innerHTML = `
+                    <div class="file-icon">📄</div>
+                    <div>Click to upload or drag and drop</div>
+                    <div style="font-size: 12px; opacity: 0.8;">Max 10MB</div>
+                `;
+                return;
+            }
+
             fileDisplay.innerHTML = `
                 <div class="file-icon">📄</div>
-                <div>Click to upload or drag and drop</div>
-                <div style="font-size: 12px; opacity: 0.8;">Max 10MB</div>
+                <div>Uploading: ${file.name}</div>
+                <div class="loading"></div>
             `;
+
+            const formData = new FormData();
+            formData.append('document', file);
+
+            try {
+                const response = await fetch('http://localhost:3000/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Upload failed! Status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                if (data.message && data.message.includes('successfully')) {
+                    uploadedDocument = data.filename;
+                    promptSent = false;
+                    setTimeout(() => {
+                        fileDisplay.innerHTML = `
+                            <div class="file-icon">✅</div>
+                            <div>Uploaded: ${file.name}</div>
+                            <div style="font-size: 12px; opacity: 0.8;">Ready!</div>
+                        `;
+                        fileDisplay.style.background = 'rgba(76, 175, 80, 0.2)';
+                        fileDisplay.style.borderColor = '#4caf50';
+                        showUploadStatus('File uploaded successfully!', 'success');
+                    }, 2000);
+                } else {
+                    throw new Error(data.message || 'Upload failed.');
+                }
+            } catch (error) {
+                uploadedDocument = null;
+                showUploadStatus(`Error uploading file: ${error.message}`, 'error');
+                fileDisplay.innerHTML = `
+                    <div class="file-icon">📄</div>
+                    <div>Click to upload or drag and drop</div>
+                    <div style="font-size: 12px; opacity: 0.8;">Max 10MB</div>
+                `;
+                console.error('Upload error:', error);
+            }
         }
-    })
-    .catch(error => {
-        uploadedDocument = null;
-        showUploadStatus(`Error uploading file: ${error.message}`, 'error');
-        fileDisplay.innerHTML = `
-            <div class="file-icon">📄</div>
-            <div>Click to upload or drag and drop</div>
-            <div style="font-size: 12px; opacity: 0.8;">Max 10MB</div>
-        `;
-        console.error('Upload error:', error);
-    });
-}
 
-function showUploadStatus(message, type) {
-    const uploadStatus = document.getElementById('uploadStatus');
-    uploadStatus.textContent = message;
-    uploadStatus.className = `upload-status ${type}`;
-    setTimeout(() => {
-        uploadStatus.className = 'upload-status';
-        uploadStatus.textContent = '';
-    }, 5000);
-}
+        function showUploadStatus(message, type) {
+            const uploadStatus = document.getElementById('uploadStatus');
+            uploadStatus.textContent = message;
+            uploadStatus.className = `upload-status ${type}`;
+            setTimeout(() => {
+                uploadStatus.className = 'upload-status';
+                uploadStatus.textContent = '';
+            }, 5000);
+        }
 
-function addMessage(sender, content) {
-    const chatMessages = document.getElementById('chatMessages');
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${sender}`;
-    messageDiv.textContent = content;
-    chatMessages.appendChild(messageDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
+        function addMessage(sender, content) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            messageDiv.textContent = content;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
 
-function sendMessage() {
+        async function sendMessage() {
     const searchInput = document.getElementById('searchInput');
     const sendButton = document.getElementById('sendButton');
-    const rightSection = document.querySelector('.right-section');
-    const searchBar = document.querySelector('.search-bar');
-    const initialChatTitle = document.getElementById('initialChatTitle');
-    const chatArea = document.querySelector('.chat-area');
-    const contentArea = document.querySelector('.content-area');
-    
-    // Get all elements to hide
-    const leftSection = document.querySelector('.left-section');
-    const rightSection2 = document.querySelector('.right-section2');
-    const loginButton = document.querySelector('.login-button');
-    const historyButton = document.querySelector('.history-button');
-    const ragHero = document.querySelector('.rag-hero');
-    
     const prompt = searchInput.value.trim();
-    
+
     if (!prompt) {
         addMessage('assistant', 'Please enter a prompt.');
         return;
     }
-    
+
     if (!uploadedDocument) {
         addMessage('assistant', '⚠️ Upload a document first.');
         return;
     }
-    
-    // Enter fullscreen mode if not already in it
-    if (!promptSent) {
-        promptSent = true;
-        
-        // Hide all elements except chat and search bar
-        leftSection.classList.add('hidden');
-        rightSection2.classList.add('hidden');
-        loginButton.classList.add('hidden');
-        historyButton.classList.add('hidden');
-        ragHero.classList.add('hidden');
-        
-        // Switch content area to chat mode
-        contentArea.classList.add('chat-mode');
-        
-        // Make right section fullscreen within the container
-        rightSection.classList.add('fullscreen');
-        searchBar.classList.add('fullscreen');
-        
-        // Show chat area and hide initial title
-        initialChatTitle.style.display = 'none';
-        chatArea.style.display = 'flex';
-        chatArea.style.opacity = '1';
 
-        // Add exit fullscreen button
-        const exitButton = document.createElement('button');
-        exitButton.className = 'exit-fullscreen-button';
-        exitButton.textContent = '✖';
-        exitButton.style.color = 'black';
-        exitButton.onclick = exitFullscreen;
-        rightSection.appendChild(exitButton);
-
-        // Force layout adjustment
-        adjustLayout();
-    }
-    
+    // Add user message to chat
     addMessage('user', prompt);
-    searchInput.value = '';
+    searchInput.value = ''; // Clear input
+
     sendButton.disabled = true;
     sendButton.innerHTML = '<div class="loading"></div>';
 
-    fetch('http://localhost:3000/query', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            filename: uploadedDocument,
-            query: prompt
-        })
-    })
-    .then(response => {
+    try {
+        const response = await fetch('http://localhost:3000/submit-prompt', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                filename: uploadedDocument,
+                prompt: prompt
+            })
+        });
+
         if (!response.ok) {
             throw new Error(`HTTP error! Status: ${response.status}`);
         }
-        return response.json();
-    })
-    .then(data => {
-        if (data.response) {
-            addMessage('assistant', data.response);
+
+        // Handle the redirect to /chat
+        const data = await response.json();
+        if (data.redirectUrl) {
+            window.location.href = data.redirectUrl;
         } else {
-            addMessage('assistant', 'Error: Unable to process the query.');
+            // If no redirect, show the response
+            addMessage('assistant', data.response || "I'm processing your request...");
         }
+    } catch (error) {
+        addMessage('assistant', `Error: ${error.message}`);
+        console.error('Error:', error);
+    } finally {
         sendButton.disabled = false;
         sendButton.innerHTML = '➤';
-    })
-    .catch(error => {
-        addMessage('assistant', `Error: Failed to connect to the server. ${error.message}`);
-        sendButton.disabled = false;
-        sendButton.innerHTML = '➤';
-        console.error('Query error:', error);
-    });
-}
-
-function exitFullscreen() {
-    const rightSection = document.querySelector('.right-section');
-    const searchBar = document.querySelector('.search-bar');
-    const contentArea = document.querySelector('.content-area');
-    const initialChatTitle = document.getElementById('initialChatTitle');
-    const chatArea = document.querySelector('.chat-area');
-    const exitButton = document.querySelector('.exit-fullscreen-button');
-    
-    // Get all elements to show again
-    const leftSection = document.querySelector('.left-section');
-    const rightSection2 = document.querySelector('.right-section2');
-    const loginButton = document.querySelector('.login-button');
-    const historyButton = document.querySelector('.history-button');
-    const ragHero = document.querySelector('.rag-hero');
-
-    // Remove fullscreen classes
-    rightSection.classList.remove('fullscreen');
-    searchBar.classList.remove('fullscreen');
-    contentArea.classList.remove('chat-mode');
-    
-    // Show all hidden elements
-    leftSection.classList.remove('hidden');
-    rightSection2.classList.remove('hidden');
-    loginButton.classList.remove('hidden');
-    historyButton.classList.remove('hidden');
-    ragHero.classList.remove('hidden');
-    
-    // Hide chat area and show initial title
-    chatArea.style.display = 'none';
-    initialChatTitle.style.display = 'block';
-    
-    if (exitButton) {
-        exitButton.remove();
-    }
-
-    promptSent = false;
-    adjustLayout();
-}
-
-function adjustLayout() {
-    const rightSection = document.querySelector('.right-section');
-    const chatMessages = document.getElementById('chatMessages');
-    const chatArea = document.querySelector('.chat-area');
-    const searchBar = document.querySelector('.search-bar');
-    const exitButton = document.querySelector('.exit-fullscreen-button');
-
-    if (rightSection.classList.contains('fullscreen')) {
-        const contentArea = document.querySelector('.content-area');
-        const containerHeight = contentArea.offsetHeight;
-        const searchBarHeight = searchBar?.offsetHeight || 70;
-        const exitButtonHeight = exitButton?.offsetHeight || 40;
-        const chatHeaderHeight = document.querySelector('.chat-header')?.offsetHeight || 60;
-        const padding = 40;
-
-        const availableHeight = Math.max(200, containerHeight - searchBarHeight - chatHeaderHeight - exitButtonHeight - padding);
-        chatMessages.style.maxHeight = `${availableHeight}px`;
-        chatMessages.style.height = 'auto';
-        chatArea.style.height = `calc(100% - ${searchBarHeight}px)`;
-        chatArea.style.display = 'flex';
-        chatArea.style.opacity = '1';
-    } else {
-        chatMessages.style.maxHeight = 'none';
-        chatMessages.style.height = 'auto';
-        chatArea.style.height = '100%';
     }
 }
+
+        function exitFullscreen() {
+            const rightSection = document.querySelector('.right-section');
+            const searchBar = document.querySelector('.search-bar');
+            const contentArea = document.querySelector('.content-area');
+            const initialChatTitle = document.getElementById('initialChatTitle');
+            const chatArea = document.querySelector('.chat-area');
+            const exitButton = document.querySelector('.exit-fullscreen-button');
+            const leftSection = document.querySelector('.left-section');
+            const rightSection2 = document.querySelector('.right-section2');
+            const loginButton = document.querySelector('.login-button');
+            const historyButton = document.querySelector('.history-button');
+            const ragHero = document.querySelector('.rag-hero');
+
+            rightSection.classList.remove('fullscreen');
+            searchBar.classList.remove('fullscreen');
+            contentArea.classList.remove('chat-mode');
+            leftSection.classList.remove('hidden');
+            rightSection2.classList.remove('hidden');
+            loginButton.classList.remove('hidden');
+            historyButton.classList.remove('hidden');
+            ragHero.classList.remove('hidden');
+            chatArea.style.display = 'none';
+            initialChatTitle.style.display = 'block';
+            
+            if (exitButton) {
+                exitButton.remove();
+            }
+
+            promptSent = false;
+            adjustLayout();
+        }
+
+        function adjustLayout() {
+            const rightSection = document.querySelector('.right-section');
+            const chatMessages = document.getElementById('chatMessages');
+            const chatArea = document.querySelector('.chat-area');
+            const searchBar = document.querySelector('.search-bar');
+            const exitButton = document.querySelector('.exit-fullscreen-button');
+
+            if (rightSection.classList.contains('fullscreen')) {
+                const contentArea = document.querySelector('.content-area');
+                const containerHeight = contentArea.offsetHeight;
+                const searchBarHeight = searchBar?.offsetHeight || 70;
+                const exitButtonHeight = exitButton?.offsetHeight || 40;
+                const chatHeaderHeight = document.querySelector('.chat-header')?.offsetHeight || 60;
+                const padding = 40;
+
+                const availableHeight = Math.max(200, containerHeight - searchBarHeight - chatHeaderHeight - exitButtonHeight - padding);
+                chatMessages.style.maxHeight = `${availableHeight}px`;
+                chatMessages.style.height = 'auto';
+                chatArea.style.height = `calc(100% - ${searchBarHeight}px)`;
+                chatArea.style.display = 'flex';
+                chatArea.style.opacity = '1';
+            } else {
+                chatMessages.style.maxHeight = 'none';
+                chatMessages.style.height = 'auto';
+                chatArea.style.height = '100%';
+            }
+        }
     </script>
 </body>
 </html>
