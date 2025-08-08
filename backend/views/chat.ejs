@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Intelligence Chat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, 
+                rgba(0, 0, 0, 1) 0%, 
+                rgba(112, 5, 64, 0.9) 50%, 
+                rgba(0, 0, 0, 1) 100%
+            );
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .main-container {
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 1200px;
+            height: 80vh;
+            display: flex;
+            flex-direction: column;
+            border-radius: 20px;
+            overflow: hidden;
+            background: linear-gradient(135deg, 
+                rgba(0, 0, 0, 0.95) 0%, 
+                rgba(112, 5, 64, 0.8) 50%, 
+                rgba(0, 0, 0, 0.95) 100%
+            );
+        }
+        
+        .chat-header {
+            padding: 20px 30px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header-left {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .chat-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 5px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .chat-subtitle {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .header-right {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .status-indicator {
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: 500;
+            background: rgba(112, 5, 64, 0.3);
+            color: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .new-chat-btn {
+            padding: 8px 16px;
+            border-radius: 18px;
+            background: linear-gradient(135deg, rgba(112, 5, 64, 0.8), rgba(74, 6, 103, 0.8));
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .new-chat-btn:hover {
+            background: linear-gradient(135deg, rgba(112, 5, 64, 1), rgba(74, 6, 103, 1));
+            transform: translateY(-1px);
+        }
+        
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            padding: 20px 30px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            scroll-behavior: smooth;
+        }
+        
+        .message {
+            max-width: 80%;
+            padding: 12px 18px;
+            border-radius: 18px;
+            font-size: 14px;
+            line-height: 1.6;
+            word-wrap: break-word;
+        }
+        
+        .message.user {
+            align-self: flex-end;
+            background: linear-gradient(135deg, rgba(112, 5, 64, 0.9), rgba(74, 6, 103, 0.9));
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .message.assistant {
+            align-self: flex-start;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+        }
+        
+        .message-time {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 4px;
+        }
+        
+        .input-container {
+            padding: 20px 30px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.03);
+        }
+        
+        .search-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .search-input {
+            flex: 1;
+            padding: 15px 20px;
+            border: none;
+            border-radius: 25px;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            font-size: 16px;
+            outline: none;
+            transition: all 0.3s ease;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .search-input:focus {
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+            background: rgba(255, 255, 255, 0.25);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+        
+        .search-input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+        
+        .send-button {
+            width: 45px;
+            height: 45px;
+            border: none;
+            border-radius: 22.5px;
+            background: linear-gradient(135deg, rgba(112, 5, 64, 0.9), rgba(74, 6, 103, 0.9));
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            font-size: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .send-button:hover {
+            background: linear-gradient(135deg, rgba(112, 5, 64, 1), rgba(74, 6, 103, 1));
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(112, 5, 64, 0.4);
+        }
+        
+        .send-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .typing-indicator {
+            align-self: flex-start;
+            padding: 12px 18px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .typing-dots {
+            display: flex;
+            gap: 3px;
+        }
+        
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.8);
+            animation: typing 1.4s infinite ease-in-out;
+        }
+        
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        
+        @keyframes typing {
+            0%, 80%, 100% { 
+                transform: scale(0.8);
+                opacity: 0.5;
+            }
+            40% { 
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+        
+        .chat-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .chat-messages::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+        
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+        
+        .chat-messages::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+        
+        @media (max-width: 768px) {
+            .main-container {
+                height: 95vh;
+                width: 100%;
+                border-radius: 15px;
+                margin: 10px;
+            }
+            
+            .chat-header {
+                padding: 15px 20px;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            
+            .header-right {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .chat-messages {
+                padding: 15px 20px;
+            }
+            
+            .input-container {
+                padding: 15px 20px;
+            }
+            
+            .message {
+                max-width: 90%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="chat-header">
+            <div class="header-left">
+                <div class="chat-title">Document Intelligence Chat</div>
+                <div class="chat-subtitle">Document: <%= filename %></div>
+            </div>
+            <div class="header-right">
+                <div class="status-indicator">📄 Document Loaded</div>
+                <button class="new-chat-btn" onclick="startNewChat()">New Chat</button>
+            </div>
+        </div>
+        
+        <div class="chat-container">
+            <div class="chat-messages" id="chatMessages">
+                <% if (prompt) { %>
+                    <div class="message user">
+                        <div><%= prompt %></div>
+                        <div class="message-time">Just now</div>
+                    </div>
+                    <div class="message assistant">
+                        <div>👋 Hello! I'm ready to help you explore your document. What would you like to know?</div>
+                        <div class="message-time">Just now</div>
+                    </div>
+                <% } else { %>
+                    <div class="message assistant">
+                        <div>👋 Hello! I'm ready to help you explore your document. What would you like to know?</div>
+                        <div class="message-time">Just now</div>
+                    </div>
+                <% } %>
+            </div>
+            
+            <div class="input-container">
+                <div class="search-container">
+                    <input type="text" 
+                           id="searchInput" 
+                           class="search-input" 
+                           placeholder="Ask anything about your document..."
+                           maxlength="500">
+                    <button class="send-button" 
+                            id="sendButton" 
+                            onclick="sendMessage()"
+                            title="Send message">
+                        ➤
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isTyping = false;
+        let uploadedDocument = '<%= filename %>';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const searchInput = document.getElementById('searchInput');
+            const sendButton = document.getElementById('sendButton');
+            
+            searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+            
+            searchInput.addEventListener('input', (e) => {
+                const button = document.getElementById('sendButton');
+                if (e.target.value.trim()) {
+                    button.style.opacity = '1';
+                    button.style.transform = 'scale(1.02)';
+                } else {
+                    button.style.opacity = '0.7';
+                    button.style.transform = 'scale(1)';
+                }
+            });
+        });
+
+        function addMessage(sender, content, time = null) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            
+            const currentTime = time || new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            messageDiv.innerHTML = `
+                <div>${content}</div>
+                <div class="message-time">${currentTime}</div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function showTypingIndicator() {
+            const chatMessages = document.getElementById('chatMessages');
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'typing-indicator';
+            typingDiv.id = 'typingIndicator';
+            typingDiv.innerHTML = `
+                <span>AI is thinking</span>
+                <div class="typing-dots">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            `;
+            
+            chatMessages.appendChild(typingDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function removeTypingIndicator() {
+            const typingIndicator = document.getElementById('typingIndicator');
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
+        }
+
+        function sendMessage() {
+            const searchInput = document.getElementById('searchInput');
+            const sendButton = document.getElementById('sendButton');
+            
+            const prompt = searchInput.value.trim();
+            
+            if (!prompt || isTyping) {
+                return;
+            }
+            
+            if (!uploadedDocument) {
+                addMessage('assistant', '⚠️ Please upload a document first.');
+                return;
+            }
+            
+            addMessage('user', prompt);
+            searchInput.value = '';
+            
+            isTyping = true;
+            sendButton.disabled = true;
+            sendButton.innerHTML = '<div class="loading"></div>';
+            
+            showTypingIndicator();
+            
+            fetch('http://localhost:3000/query', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    filename: uploadedDocument,
+                    query: prompt
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                removeTypingIndicator();
+                if (data.response) {
+                    addMessage('assistant', data.response);
+                } else {
+                    addMessage('assistant', 'Error: Unable to process the query.');
+                }
+                isTyping = false;
+                sendButton.disabled = false;
+                sendButton.innerHTML = '➤';
+            })
+            .catch(error => {
+                removeTypingIndicator();
+                addMessage('assistant', `Error: Failed to connect to the server. ${error.message}`);
+                isTyping = false;
+                sendButton.disabled = false;
+                sendButton.innerHTML = '➤';
+                console.error('Query error:', error);
+            });
+        }
+
+        function startNewChat() {
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>
