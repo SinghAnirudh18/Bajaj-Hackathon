@@ -1,12 +1,9 @@
-# --- Python RAG Q&A Service with FastAPI ---
-# This service takes documents and questions as input and returns answers in JSON format.
-
-# Requirements:
-# pip install fastapi uvicorn "python-dotenv[extra]" PyMuPDF tiktoken langchain-text-splitters qdrant-client sentence-transformers requests
+# --- Memory-Optimized Python RAG Q&A Service with FastAPI ---
+# Optimized for cloud deployment with limited memory (512MB)
 
 import os
 import json
-import io
+import gc
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 import uvicorn
@@ -19,7 +16,6 @@ from pydantic import BaseModel
 
 # Qdrant specific imports
 from qdrant_client import QdrantClient, models
-from sentence_transformers import SentenceTransformer
 
 # RAG Pipeline imports
 import fitz
@@ -33,23 +29,24 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+PORT = int(os.getenv("PORT", 8001))  # Use PORT from environment for Render
 
 # --- FastAPI App Initialization ---
 app = FastAPI(title="RAG Q&A Service", version="1.0.0")
 
-# --- Global Services ---
-qdrant_client = None
+# --- Global Services (lazy loading to save memory) ---
 embedding_model = None
+qdrant_client = None
 
-# --- RAG Pipeline Configuration ---
-CHUNK_SIZE_TOKENS = 512
-OVERLAP_PERCENTAGE = 0.15
+# --- RAG Pipeline Configuration (reduced for memory efficiency) ---
+CHUNK_SIZE_TOKENS = 256  # Reduced from 512
+OVERLAP_PERCENTAGE = 0.1  # Reduced from 0.15
 ENCODING_NAME = "cl100k_base"
-MAX_LINES_TO_CHECK = 5
+MAX_LINES_TO_CHECK = 3  # Reduced from 5
 REPETITION_THRESHOLD_PERCENT = 70
 
 ENCODER = tiktoken.get_encoding(ENCODING_NAME)
-COLLECTION_NAME = "policy-documents"
+COLLECTION_NAME = "docs"
 
 # --- Helper Functions ---
 
@@ -63,182 +60,188 @@ def call_gemini_api(prompt: str) -> str:
     payload = {
         "contents": [{
             "parts": [{"text": prompt}]
-        }]
+        }],
+        "generationConfig": {
+            "maxOutputTokens": 512,  # Limit response length
+            "temperature": 0.1
+        }
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
         response_json = response.json()
         
         return response_json['candidates'][0]['content']['parts'][0]['text']
-    except requests.exceptions.RequestException as e:
-        print(f"Error calling Gemini API: {e}")
-        return "An error occurred while communicating with the LLM."
-    except KeyError:
-        print("Invalid response from Gemini API.")
-        return "An error occurred while parsing the LLM response."
+    except Exception as e:
+        print(f"Gemini API error: {e}")
+        return "Error generating response."
+
+def get_embedding_model():
+    """Lazy load embedding model to save memory."""
+    global embedding_model
+    if embedding_model is None:
+        try:
+            # Use a smaller, more efficient model
+            from sentence_transformers import SentenceTransformer
+            embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+            print("✅ Embedding model loaded")
+        except Exception as e:
+            print(f"❌ Failed to load embedding model: {e}")
+            raise HTTPException(status_code=503, detail="Embedding model unavailable")
+    return embedding_model
+
+def setup_qdrant():
+    """Setup Qdrant client."""
+    global qdrant_client
+    if qdrant_client is None:
+        qdrant_client = QdrantClient(":memory:")
+        
+        # Create collection with smaller vector size
+        qdrant_client.create_collection(
+            collection_name=COLLECTION_NAME,
+            vectors_config=models.VectorParams(size=384, distance=models.Distance.COSINE)
+        )
+        print("✅ Qdrant initialized")
+    else:
+        # Recreate collection for fresh state
+        try:
+            qdrant_client.delete_collection(COLLECTION_NAME)
+        except:
+            pass
+        qdrant_client.create_collection(
+            collection_name=COLLECTION_NAME,
+            vectors_config=models.VectorParams(size=384, distance=models.Distance.COSINE)
+        )
 
 def count_tokens(text: str) -> int:
     """Counts tokens using the global tiktoken encoder."""
     return len(ENCODER.encode(text))
 
 def download_pdf(url: str) -> bytes:
-    """Downloads PDF from URL and returns bytes."""
+    """Downloads PDF from URL with memory optimization."""
     try:
-        response = requests.get(url, timeout=30)
+        # Stream download to avoid loading entire file in memory
+        response = requests.get(url, timeout=60, stream=True)
         response.raise_for_status()
-        return response.content
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=400, detail=f"Failed to download PDF from URL: {e}")
+        
+        # Read in chunks to manage memory
+        pdf_data = bytearray()
+        for chunk in response.iter_content(chunk_size=8192):
+            pdf_data.extend(chunk)
+        
+        return bytes(pdf_data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"PDF download failed: {e}")
 
 def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> List[Dict]:
-    """Extracts text content page by page from PDF bytes (in-memory)."""
+    """Extracts text from PDF with memory optimization."""
     pages_content = []
+    document = None
+    
     try:
         document = fitz.open(stream=pdf_bytes, filetype="pdf")
-        for page_num in range(len(document)):
+        
+        # Limit pages to avoid memory issues
+        max_pages = min(len(document), 50)  # Process max 50 pages
+        
+        for page_num in range(max_pages):
             page = document.load_page(page_num)
             text = page.get_text("text")
-            pages_content.append({"page_num": page_num + 1, "text": text})
-        document.close()
+            
+            # Only keep pages with substantial content
+            if len(text.strip()) > 100:
+                pages_content.append({"page_num": page_num + 1, "text": text})
+            
+            # Clean up page from memory
+            del page
+            
     except Exception as e:
-        print(f"Error reading PDF from bytes: {e}")
+        print(f"PDF extraction error: {e}")
+    finally:
+        if document:
+            document.close()
+        
+        # Force garbage collection
+        gc.collect()
+    
     return pages_content
 
-def identify_common_page_elements(all_pages_content: dict[str, list[dict]],
-                                   max_lines: int = MAX_LINES_TO_CHECK,
-                                   repetition_threshold_percent: int = REPETITION_THRESHOLD_PERCENT) -> tuple[set, set]:
-    """Analyzes text from multiple pages to identify common header and footer lines."""
-    header_candidates = Counter()
-    footer_candidates = Counter()
-    total_non_first_pages = 0
+def simple_chunk_text(text: str, doc_id: str, page: int) -> List[Dict]:
+    """Simplified chunking to save memory."""
+    # Simple sentence-based chunking
+    sentences = re.split(r'[.!?]+', text)
+    chunks = []
+    current_chunk = ""
     
-    for doc_id, pages_data in all_pages_content.items():
-        for page_data in pages_data:
-            page_num = page_data['page_num']
-            page_text = page_data['text']
-            if page_num == 1: 
-                continue
-            total_non_first_pages += 1
-            lines = [line.strip() for line in page_text.split('\n') if line.strip()]
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
             
-            for i in range(min(max_lines, len(lines))):
-                header_candidates[lines[i]] += 1
-                
-            for i in range(max(0, len(lines) - max_lines), len(lines)):
-                footer_candidates[lines[i]] += 1
-    
-    common_header_lines = set()
-    common_footer_lines = set()
-    
-    if total_non_first_pages == 0: 
-        return common_header_lines, common_footer_lines
-    
-    threshold_count = math.ceil(total_non_first_pages * (repetition_threshold_percent / 100))
-    
-    for line, count in header_candidates.items():
-        if count >= threshold_count: 
-            common_header_lines.add(line)
-            
-    for line, count in footer_candidates.items():
-        if count >= threshold_count and (re.fullmatch(r'\s*\d+\s*', line) or 
-                                        re.fullmatch(r'Page\s+\d+\s*(of\s+\d+)?', line, re.IGNORECASE)):
-            common_footer_lines.add(line)
-    
-    return common_header_lines, common_footer_lines
-
-def remove_identified_elements(page_text: str, page_num: int,
-                               common_header_lines: set, common_footer_lines: set) -> str:
-    """Removes identified common header and footer lines from a page's text."""
-    if page_num == 1: 
-        return page_text
+        test_chunk = current_chunk + " " + sentence if current_chunk else sentence
         
-    lines = [line.strip() for line in page_text.split('\n')]
-    final_lines = []
-    temp_lines = []
+        if count_tokens(test_chunk) > CHUNK_SIZE_TOKENS and current_chunk:
+            # Save current chunk
+            chunks.append({
+                "content": current_chunk.strip(),
+                "metadata": {
+                    "doc_id": doc_id,
+                    "page": page,
+                    "chunk_id": f"{doc_id}-p{page}-c{len(chunks)}"
+                },
+                "point_id": str(uuid.uuid4())
+            })
+            current_chunk = sentence
+        else:
+            current_chunk = test_chunk
     
-    for i, line in enumerate(lines):
-        if line in common_header_lines and i < MAX_LINES_TO_CHECK: 
-            continue
-        else: 
-            temp_lines.append(line)
-    
-    footer_check_start_index = max(0, len(temp_lines) - MAX_LINES_TO_CHECK)
-    for i, line in enumerate(temp_lines):
-        if line in common_footer_lines and i >= footer_check_start_index: 
-            continue
-        else: 
-            final_lines.append(line)
-    
-    return "\n".join(line for line in final_lines if line.strip() != "")
-
-def chunk_text_with_metadata(text: str, chunk_size_tokens: int, overlap_percentage: float,
-                             doc_id: str, page: int, base_clause_id_prefix: str):
-    """Splits a given text into chunks using RecursiveCharacterTextSplitter and adds metadata."""
-    avg_chars_per_token = 4
-    chunk_size_chars = chunk_size_tokens * avg_chars_per_token
-    overlap_chars = math.floor(chunk_size_chars * overlap_percentage)
-    
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size_chars,
-        chunk_overlap=overlap_chars,
-        length_function=len,
-        separators=["\n\n", "\n", " ", ""]
-    )
-    
-    raw_chunks = text_splitter.split_text(text)
-    processed_chunks = []
-    
-    for i, chunk_content in enumerate(raw_chunks):
-        token_length = count_tokens(chunk_content)
-        clause_id = f"{base_clause_id_prefix}-{doc_id}-p{page}-c{i + 1}"
-        metadata = {
-            "doc_id": doc_id,
-            "page": page,
-            "clause_id": clause_id,
-            "chunk_length_tokens": token_length,
-            "chunk_length_chars": len(chunk_content)
-        }
-        processed_chunks.append({
-            "content": chunk_content,
-            "metadata": metadata,
+    # Add final chunk
+    if current_chunk.strip():
+        chunks.append({
+            "content": current_chunk.strip(),
+            "metadata": {
+                "doc_id": doc_id,
+                "page": page,
+                "chunk_id": f"{doc_id}-p{page}-c{len(chunks)}"
+            },
             "point_id": str(uuid.uuid4())
         })
     
-    return processed_chunks
+    return chunks
 
-def process_single_pdf_bytes(pdf_bytes: bytes, doc_id: str) -> List[Dict]:
-    """Processes a single PDF from bytes, cleans it, and chunks the content."""
+def process_pdf_memory_efficient(pdf_bytes: bytes, doc_id: str) -> List[Dict]:
+    """Memory-efficient PDF processing."""
+    print("📄 Extracting text...")
     pages_content = extract_text_from_pdf_bytes(pdf_bytes)
-    if not pages_content:
-        raise ValueError("Failed to extract content from PDF.")
-        
-    all_docs_pages_content = {doc_id: pages_content}
-    common_header_lines, common_footer_lines = identify_common_page_elements(all_docs_pages_content)
     
-    all_processed_chunks = []
+    if not pages_content:
+        raise ValueError("No content extracted from PDF")
+    
+    print(f"📄 Processing {len(pages_content)} pages...")
+    all_chunks = []
+    
     for page_data in pages_content:
-        cleaned_page_text = remove_identified_elements(
-            page_data['text'], page_data['page_num'], common_header_lines, common_footer_lines
-        )
-        if cleaned_page_text.strip():
-            page_chunks = chunk_text_with_metadata(
-                text=cleaned_page_text,
-                chunk_size_tokens=CHUNK_SIZE_TOKENS,
-                overlap_percentage=OVERLAP_PERCENTAGE,
-                doc_id=doc_id,
-                page=page_data['page_num'],
-                base_clause_id_prefix="Clause"
-            )
-            all_processed_chunks.extend(page_chunks)
-            
-    return all_processed_chunks
+        # Simple text cleaning
+        text = page_data['text']
+        # Remove excessive whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        if len(text) > 50:  # Only process substantial content
+            page_chunks = simple_chunk_text(text, doc_id, page_data['page_num'])
+            all_chunks.extend(page_chunks)
+    
+    # Clean up
+    del pages_content
+    gc.collect()
+    
+    return all_chunks
 
-def retrieve_relevant_chunks(query: str, qdrant_client: QdrantClient, embedding_model: SentenceTransformer, top_k: int = 5) -> List[Dict]:
-    """Retrieves relevant chunks from Qdrant based on semantic similarity."""
+def retrieve_chunks(query: str, top_k: int = 5) -> List[Dict]:
+    """Retrieve relevant chunks."""
     try:
-        query_vector = embedding_model.encode(query).tolist()
+        model = get_embedding_model()
+        query_vector = model.encode(query).tolist()
         
         search_results = qdrant_client.search(
             collection_name=COLLECTION_NAME,
@@ -246,198 +249,150 @@ def retrieve_relevant_chunks(query: str, qdrant_client: QdrantClient, embedding_
             limit=top_k,
             with_payload=True
         )
-
+        
         chunks = []
         for result in search_results:
-            chunk_data = {
+            chunks.append({
                 'content': result.payload.get('content', ''),
                 'metadata': {k: v for k, v in result.payload.items() if k != 'content'},
                 'score': result.score
-            }
-            chunks.append(chunk_data)
+            })
         return chunks
     except Exception as e:
-        print(f"Error retrieving chunks: {e}")
+        print(f"Retrieval error: {e}")
         return []
 
-def generate_answer(question: str, context_chunks: List[Dict]) -> str:
-    """Generates an answer using the retrieved context with Gemini API."""
+def generate_answer(question: str, chunks: List[Dict]) -> str:
+    """Generate answer with limited context."""
     if not GEMINI_API_KEY:
-        return "Gemini API key not configured."
+        return "API key not configured"
     
-    try:
-        # Prepare context
-        context_text = "\n\n".join([chunk['content'] for chunk in context_chunks[:5]])
-        
-        # Create prompt for answer generation
-        prompt = f"""
-You are an expert assistant that provides accurate and concise answers based on the provided context.
+    # Limit context to avoid token limits
+    context = "\n\n".join([chunk['content'][:300] for chunk in chunks[:3]])
+    
+    prompt = f"""Based on the following context, answer the question concisely:
 
 Context:
-{context_text}
+{context}
 
 Question: {question}
 
-Instructions:
-1. Answer the question based ONLY on the information provided in the context
-2. If the context doesn't contain enough information to answer the question, state that clearly
-3. Be concise but complete in your answer
-4. Use specific details from the context when possible
-5. Do not make assumptions or add information not present in the context
-
-Answer:"""
-
-        return call_gemini_api(prompt)
-        
-    except Exception as e:
-        print(f"Error generating answer with Gemini: {e}")
-        return f"Error generating answer: {str(e)}"
-
-def setup_qdrant_collection():
-    """Sets up a new Qdrant collection for this session."""
-    global qdrant_client
+Answer (be specific and concise):"""
     
-    # Create a new in-memory client for each request to ensure clean state
-    qdrant_client = QdrantClient(":memory:")
-    
-    # Create collection
-    qdrant_client.create_collection(
-        collection_name=COLLECTION_NAME,
-        vectors_config=models.VectorParams(size=384, distance=models.Distance.COSINE)
-    )
+    return call_gemini_api(prompt)
 
 # --- Request/Response Models ---
 
 class QARequest(BaseModel):
-    documents: str  # URL to the PDF document
+    documents: str
     questions: List[str]
 
 class QAResponse(BaseModel):
     answers: List[str]
 
-# --- Main Q&A Endpoint ---
+# --- Main Endpoint ---
 
 @app.post("/qa", response_model=QAResponse)
 async def question_answering(request: QARequest):
-    """
-    Main endpoint that takes a document URL and questions, processes them, and returns answers.
-    """
-    global embedding_model
-    
+    """Memory-optimized Q&A endpoint."""
     try:
-        print(f"🔍 Processing {len(request.questions)} questions for document: {request.documents}")
+        print(f"🔍 Processing {len(request.questions)} questions")
         
-        # Initialize services for this request
-        if embedding_model is None:
-            embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-            print("✅ Embedding model loaded")
+        # Initialize services
+        setup_qdrant()
+        model = get_embedding_model()
         
-        # Setup fresh Qdrant collection
-        setup_qdrant_collection()
-        print("✅ Qdrant collection initialized")
-        
-        # Step 1: Download and process the PDF
+        # Process document
         print("📥 Downloading PDF...")
         pdf_bytes = download_pdf(request.documents)
         
         print("📄 Processing PDF...")
-        doc_id = str(uuid.uuid4())
-        processed_chunks = process_single_pdf_bytes(pdf_bytes, doc_id=doc_id)
+        doc_id = str(uuid.uuid4())[:8]  # Shorter IDs
+        chunks = process_pdf_memory_efficient(pdf_bytes, doc_id)
         
-        if not processed_chunks:
-            raise HTTPException(status_code=400, detail="No content could be extracted from the PDF")
+        if not chunks:
+            raise HTTPException(status_code=400, detail="No content extracted")
         
-        print(f"✅ Extracted {len(processed_chunks)} chunks from PDF")
+        print(f"✅ Created {len(chunks)} chunks")
         
-        # Step 2: Embed and index chunks
+        # Index chunks in batches to manage memory
         print("🔍 Indexing chunks...")
-        points = []
-        for chunk in processed_chunks:
-            vector = embedding_model.encode(chunk['content']).tolist()
-            point_id = chunk['point_id']
-            points.append(
-                models.PointStruct(
-                    id=point_id,
-                    vector=vector,
-                    payload=chunk['metadata'] | {"content": chunk['content']}
-                )
-            )
+        batch_size = 20
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i:i+batch_size]
+            points = []
+            
+            for chunk in batch:
+                try:
+                    vector = model.encode(chunk['content']).tolist()
+                    points.append(
+                        models.PointStruct(
+                            id=chunk['point_id'],
+                            vector=vector,
+                            payload=chunk['metadata'] | {"content": chunk['content']}
+                        )
+                    )
+                except Exception as e:
+                    print(f"Encoding error: {e}")
+                    continue
+            
+            if points:
+                qdrant_client.upsert(collection_name=COLLECTION_NAME, points=points)
+            
+            # Clean up batch from memory
+            del batch, points
+            gc.collect()
         
-        qdrant_client.upsert(
-            collection_name=COLLECTION_NAME,
-            points=points
-        )
-        print(f"✅ Indexed {len(points)} chunks in Qdrant")
+        print("✅ Indexing complete")
         
-        # Step 3: Process each question
+        # Process questions
         answers = []
         for i, question in enumerate(request.questions):
-            print(f"❓ Processing question {i+1}/{len(request.questions)}: {question[:50]}...")
+            print(f"❓ Question {i+1}/{len(request.questions)}")
             
-            # Retrieve relevant chunks for this question
-            relevant_chunks = retrieve_relevant_chunks(question, qdrant_client, embedding_model, top_k=8)
-            
-            # Generate answer using the retrieved context
+            relevant_chunks = retrieve_chunks(question, top_k=5)
             answer = generate_answer(question, relevant_chunks)
             answers.append(answer.strip())
             
-            print(f"✅ Generated answer {i+1}")
+            # Clean up
+            del relevant_chunks
+            gc.collect()
         
-        print("🎉 All questions processed successfully!")
+        # Final cleanup
+        del chunks, pdf_bytes
+        gc.collect()
         
+        print("✅ Complete!")
         return QAResponse(answers=answers)
         
-    except HTTPException as e:
-        raise e
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"❌ Error in Q&A processing: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-# --- Health Check Endpoint ---
+        print(f"❌ Error: {e}")
+        # Clean up on error
+        gc.collect()
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
+        "memory_usage": "optimized",
         "services": {
-            "embedding_model": embedding_model is not None,
             "gemini": GEMINI_API_KEY is not None
         }
     }
 
 @app.get("/")
 async def root():
-    """Root endpoint with service information."""
+    """Root endpoint."""
     return {
-        "message": "🚀 RAG Q&A Service is running!",
-        "endpoints": {
-            "qa": "/qa - Main Q&A endpoint",
-            "health": "/health - Health check",
-            "docs": "/docs - API documentation"
-        },
-        "usage": {
-            "method": "POST",
-            "endpoint": "/qa",
-            "body": {
-                "documents": "URL to PDF document",
-                "questions": ["List of questions to answer"]
-            }
-        }
+        "message": "🚀 Memory-Optimized RAG Q&A Service",
+        "status": "running",
+        "endpoint": "POST /qa"
     }
-
-# --- Startup Event ---
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize services on startup."""
-    global embedding_model
-    try:
-        print("🚀 Starting RAG Q&A Service...")
-        print("✅ Service startup completed!")
-    except Exception as e:
-        print(f"❌ Startup error: {e}")
 
 # --- Main Entry Point ---
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=PORT)
