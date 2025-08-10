@@ -1,0 +1,10 @@
+pymongo
+fastapi
+uvicorn
+python-dotenv
+PyMuPdf
+tiktoken
+langchain-text-splitters
+qdrant-client
+sentence-transformers
+google-generativeai
